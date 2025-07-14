@@ -29,7 +29,7 @@ const logger = {
     summary: (msg) => console.log(`${colors.green}${colors.bold}[SUMMARY] ${msg}${colors.reset}`),
     banner: () => {
         const border = `${colors.blue}${colors.bold}╔═════════════════════════════════════════╗${colors.reset}`;
-        const title = `${colors.blue}${colors.bold}║     🍉 19Seniman From  Insider 🍉    ║${colors.reset}`;
+        const title = `${colors.blue}${colors.bold}║    🍉 19Seniman From Insider  🍉  ║${colors.reset}`;
         const bottomBorder = `${colors.blue}${colors.bold}╚═════════════════════════════════════════╝${colors.reset}`;
         
         console.log(`\n${border}`);
@@ -63,7 +63,9 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-const BELIEF_PRICE_ORO_TO_ZIG = "1.982160555004955471";
+// This default belief price should probably be dynamic or fetched
+const BELIEF_PRICE_ORO_TO_ZIG = "1.982160555004955471"; 
+const SWAP_MAX_SPREAD = "0.5"; // Increased from "0.3" to "0.5" for more tolerance
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -143,6 +145,7 @@ async function getPoolInfo(contractAddress) {
 function calculateBeliefPrice(poolInfo, fromDenom) {
   try {
     if (!poolInfo || !poolInfo.assets || poolInfo.assets.length !== 2) {
+      // Fallback to default if poolInfo is invalid
       return fromDenom === DENOM_ZIG ? "0.5" : BELIEF_PRICE_ORO_TO_ZIG;
     }
 
@@ -179,7 +182,8 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
     let beliefPrice;
     if (fromDenom === DENOM_ZIG) {
       const rawPrice = oroAmount / zigAmount;
-      beliefPrice = (rawPrice * 0.90).toFixed(18);
+        // Slightly more lenient belief price for ZIG -> ORO
+      beliefPrice = (rawPrice * 0.95).toFixed(18); // Increased from 0.90 to 0.95
     } else {
       beliefPrice = BELIEF_PRICE_ORO_TO_ZIG;
     }
@@ -216,7 +220,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
         msg = {
           swap: {
             belief_price: beliefPrice,
-            max_spread: "0.3",
+            max_spread: SWAP_MAX_SPREAD, // Use the new constant
             offer_asset: {
               amount: microAmount.toString(),
               info: { native_token: { denom: fromDenom } },
@@ -229,7 +233,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
         msg = {
           swap: {
             belief_price: beliefPrice,
-            max_spread: "0.3",
+            max_spread: SWAP_MAX_SPREAD, // Use the new constant
             offer_asset: {
               amount: microAmount.toString(),
               info: { native_token: { denom: fromDenom } },
@@ -478,7 +482,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
 
   logger.success(`Cycle ${cycleNumber} completed with ${successfulSwaps}/10 successful swaps.`);
   console.log();
-}
+}``
 
 async function main() {
   logger.banner();
@@ -509,8 +513,8 @@ async function main() {
 }
 
 main().catch((error) => {
-    if (typeof logger === 'object' && typeof logger.error === 'function') {
-        logger.critical(`Bot failed: ${error.message}`); // Menggunakan critical untuk kegagalan bot utama
+    if (typeof logger === 'object' && typeof logger.critical === 'function') {
+        logger.critical(`Bot failed: ${error.message}`);
     } else {
         console.error(`\x1b[31m[FATAL ERROR] Bot failed: ${error.message}\x1b[0m`);
     }
