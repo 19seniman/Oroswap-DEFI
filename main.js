@@ -447,7 +447,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     const fromDenom = i % 2 === 1 ? DENOM_ORO : DENOM_ZIG;
     const balance = await getBalance(client, address, fromDenom);
     if (balance < 0.0005) {
-      logger.warn(`Skipping swap ${i}/19: Insufficient ${fromDenom === DENOM_ZIG ? 'ZIG' : 'ORO'} balance (${balance.toFixed(6)})`);
+      logger.warn(`Skipping swap ${i}/10: Insufficient ${fromDenom === DENOM_ZIG ? 'ZIG' : 'ORO'} balance (${balance.toFixed(6)})`);
       continue;
     }
     const swapAmount = getRandomSwapAmount(balance);
@@ -456,7 +456,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     if (result) {
       successfulSwaps++;
     } else {
-      logger.warn(`Swap ${i}/19 failed, proceeding to next swap.`);
+      logger.warn(`Swap ${i}/10 failed, proceeding to next swap.`);
     }
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
