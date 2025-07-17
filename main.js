@@ -443,7 +443,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
   logger.info(`Initial balances: ${zigBalance.toFixed(6)} ZIG, ${oroBalance.toFixed(6)} ORO`);
 
   let successfulSwaps = 0;
-  for (let i = 1; i <= 19; i++) {
+  for (let i = 1; i <= 10; i++) {
     const fromDenom = i % 2 === 1 ? DENOM_ORO : DENOM_ZIG;
     const balance = await getBalance(client, address, fromDenom);
     if (balance < 0.0005) {
