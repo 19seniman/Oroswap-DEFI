@@ -44,7 +44,7 @@ const logger = {
     },
 };
 
-const RPC_URL = 'https://rpc.zigscan.net/';
+const RPC_URL = 'https://rpc.zigscan.net/'; // Periksa kembali stabilitas RPC ini. Jika ada alternatif, gunakan.
 const API_URL = 'https://testnet-api.oroswap.org/api/';
 const EXPLORER_URL = 'https://zigscan.org/tx/';
 const GAS_PRICE = GasPrice.fromString('0.002uzig'); 
@@ -195,12 +195,13 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
 async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRetries = 3) {
   let retries = 0;
   while (retries < maxRetries) {
+    let client; // Deklarasikan client di luar try block agar bisa diinisialisasi ulang
     try {
-      const client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
+      // Selalu buat client baru untuk setiap percobaan (terutama setelah error)
+      client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
       
-      // Dapatkan sequence number terbaru sebelum setiap transaksi
       const { sequence } = await client.getSequence(address);
-      logger.info(`[${address}] Current account sequence for swap: ${sequence}`);
+      logger.info(`[${address}] Current account sequence for swap ${swapNumber}: ${sequence}`);
 
       const microAmount = toMicroUnits(amount, fromDenom);
       const fromSymbol = fromDenom === DENOM_ZIG ? 'ZIG' : 'ORO';
@@ -248,27 +249,51 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
 
       logger.loading(`Swap ${swapNumber}/10: ${amount.toFixed(5)} ${fromSymbol} -> ${toSymbol} (Attempt ${retries + 1}/${maxRetries})`);
       const result = await client.execute(address, contractAddr, msg, 'auto', 'Swap', funds);
+      
+      // Verifikasi transaksi di on-chain untuk memastikan konfirmasi
+      try {
+          logger.info(`Verifying transaction ${result.transactionHash} on-chain...`);
+          // Poll every 2 seconds for up to 10 seconds to confirm transaction
+          const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+          if (txResponse.code !== undefined && txResponse.code !== 0) {
+              throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+          }
+          logger.success(`Transaction ${result.transactionHash} confirmed on-chain.`);
+      } catch (txError) {
+          logger.error(`Failed to confirm transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway, but be aware.`);
+      }
+
       logger.success(`Swap ${swapNumber} completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
       return result;
     } catch (error) {
       retries++;
       logger.error(`Swap ${swapNumber} failed (Attempt ${retries}/${maxRetries}): ${error.message}`);
+      
+      // Strategi waktu tunggu yang lebih agresif untuk sequence mismatch
+      if (error.message.includes('account sequence mismatch')) {
+          const waitTime = 10000 + (retries * 5000); // Mulai dari 10 detik, lalu 15s, 20s...
+          logger.warn(`${colors.yellow}Detected account sequence mismatch. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+      } else {
+          // Waktu tunggu default untuk error lainnya
+          logger.warn(`Waiting ${3000 / 1000} seconds before next retry...`);
+          await new Promise(resolve => setTimeout(resolve, 3000)); 
+      }
+
       if (retries === maxRetries) {
-        logger.error(`Swap ${swapNumber} failed after ${maxRetries} retries. Skipping.`);
+        logger.critical(`Swap ${swapNumber} failed after ${maxRetries} retries. Skipping this swap permanently.`);
         return null;
       }
-      // Tambahkan waktu tunggu yang lebih panjang untuk error sequence mismatch
-      await new Promise(resolve => setTimeout(resolve, 5000)); 
     }
   }
   return null;
 }
 
 async function addLiquidity(wallet, address) {
+  let client; // Deklarasikan client di luar try block
   try {
-    const client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
+    client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
     
-    // Dapatkan sequence number terbaru sebelum setiap transaksi
     const { sequence } = await client.getSequence(address);
     logger.info(`[${address}] Current account sequence for add liquidity: ${sequence}`);
 
@@ -299,12 +324,26 @@ async function addLiquidity(wallet, address) {
 
     logger.loading(`Adding liquidity: ${LIQUIDITY_ORO_AMOUNT} ORO + ${LIQUIDITY_ZIG_AMOUNT} ZIG`);
     const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Adding pool Liquidity', funds);
+
+    // Verifikasi transaksi di on-chain untuk memastikan konfirmasi
+    try {
+        logger.info(`Verifying liquidity addition transaction ${result.transactionHash} on-chain...`);
+        const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+        if (txResponse.code !== undefined && txResponse.code !== 0) {
+            throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+        }
+        logger.success(`Liquidity addition transaction ${result.transactionHash} confirmed on-chain.`);
+    } catch (txError) {
+        logger.error(`Failed to confirm liquidity addition transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
+    }
+
     logger.success(`Liquidity added! Tx: ${EXPLORER_URL}${result.transactionHash}`);
     return result;
   } catch (error) {
     logger.error(`Add liquidity failed: ${error.message}`);
-    // Tambahkan waktu tunggu jika ada error, meskipun bukan sequence mismatch
-    await new Promise(resolve => setTimeout(resolve, 3000)); 
+    // Untuk add/withdraw liquidity, kita tidak melakukan retry loop di sini, 
+    // tapi delay tetap diberikan jika terjadi error
+    await new Promise(resolve => setTimeout(resolve, 5000)); 
     return null;
   }
 }
@@ -343,16 +382,16 @@ async function getPoolTokenBalance(address) {
 }
 
 async function withdrawLiquidity(wallet, address) {
+  let client; // Deklarasikan client di luar try block
   try {
     const poolToken = await getPoolTokenBalance(address);
-    if (!poolToken || parseFloat(poolToken.amount) <= 0) { // Tambahkan cek amount > 0
+    if (!poolToken || parseFloat(poolToken.amount) <= 0) { 
       logger.warn('No pool tokens found or amount is zero to withdraw');
       return null;
     }
 
-    const client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
+    client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
     
-    // Dapatkan sequence number terbaru sebelum setiap transaksi
     const { sequence } = await client.getSequence(address);
     logger.info(`[${address}] Current account sequence for withdraw liquidity: ${sequence}`);
 
@@ -364,12 +403,26 @@ async function withdrawLiquidity(wallet, address) {
 
     logger.loading(`Withdrawing liquidity: ${poolToken.amount} LP tokens`);
     const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Removing pool Liquidity', funds);
+
+    // Verifikasi transaksi di on-chain untuk memastikan konfirmasi
+    try {
+        logger.info(`Verifying liquidity withdrawal transaction ${result.transactionHash} on-chain...`);
+        const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+        if (txResponse.code !== undefined && txResponse.code !== 0) {
+            throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+        }
+        logger.success(`Liquidity withdrawal transaction ${result.transactionHash} confirmed on-chain.`);
+    } catch (txError) {
+        logger.error(`Failed to confirm liquidity withdrawal transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
+    }
+
     logger.success(`Liquidity withdrawn! Tx: ${EXPLORER_URL}${result.transactionHash}`);
     return result;
   } catch (error) {
     logger.error(`Withdraw liquidity failed: ${error.message}`);
-    // Tambahkan waktu tunggu jika ada error, meskipun bukan sequence mismatch
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Untuk add/withdraw liquidity, kita tidak melakukan retry loop di sini, 
+    // tapi delay tetap diberikan jika terjadi error
+    await new Promise(resolve => setTimeout(resolve, 5000));
     return null;
   }
 }
@@ -433,8 +486,8 @@ async function executeAllWallets(keys, numTransactions) {
         await executeTransactionCycle(wallet, address, cycle, walletIndex + 1);
 
         if (cycle < numTransactions) {
-          logger.info(`Waiting 5 seconds before next cycle...`); // Tambah waktu tunggu antar siklus
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          logger.info(`Waiting ${colors.magenta}10 seconds${colors.reset} before next cycle for wallet ${walletIndex + 1}...`); // Tingkatkan waktu tunggu antar siklus
+          await new Promise(resolve => setTimeout(resolve, 10000)); // 10 detik
         }
       }
 
@@ -443,7 +496,7 @@ async function executeAllWallets(keys, numTransactions) {
         console.log();
       }
     } catch (error) {
-      logger.error(`Error processing wallet ${walletIndex + 1}: ${error.message}`);
+      logger.critical(`Error processing wallet ${walletIndex + 1}: ${error.message}. Skipping to next wallet.`);
     }
   }
 }
@@ -451,7 +504,7 @@ async function executeAllWallets(keys, numTransactions) {
 async function executeTransactionCycle(wallet, address, cycleNumber, walletNumber) {
   logger.section(`Transaction for Wallet ${walletNumber} (Cycle ${cycleNumber})`);
     
-  // Pastikan client ini mendapatkan state terbaru setiap kali cycle dimulai
+  // Membuat client baru untuk setiap siklus transaksi untuk memastikan kesegaran
   const client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
 
   const zigBalance = await getBalance(client, address, DENOM_ZIG);
@@ -463,7 +516,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     const fromDenom = i % 2 === 1 ? DENOM_ORO : DENOM_ZIG;
     // Panggil getBalance di dalam loop untuk memastikan saldo terbaru
     const currentBalance = await getBalance(client, address, fromDenom);
-    if (currentBalance < 0.0005) { // Tingkatkan batas minimal untuk swap
+    if (currentBalance < 0.0005) { 
       logger.warn(`Skipping swap ${i}/10: Insufficient ${fromDenom === DENOM_ZIG ? 'ZIG' : 'ORO'} balance (${currentBalance.toFixed(6)})`);
       continue;
     }
@@ -473,20 +526,21 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     if (result) {
       successfulSwaps++;
     } else {
-      logger.warn(`Swap ${i}/10 failed, proceeding to next swap.`);
+      logger.warn(`Swap ${i}/10 failed after all retries.`);
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Waktu tunggu antar swap, bahkan jika berhasil, untuk mengurangi tekanan pada node
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 detik
   }
 
-  // Tambahkan sedikit delay sebelum liquidity operations
-  await new Promise(resolve => setTimeout(resolve, 2000)); 
+  // Tambahkan delay yang lebih signifikan sebelum operasi likuiditas
+  await new Promise(resolve => setTimeout(resolve, 5000)); // 5 detik
 
   const liquidityResult = await addLiquidity(wallet, address);
   if (!liquidityResult) {
     logger.warn('Liquidity addition failed, proceeding to withdrawal attempt.');
   }
 
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise(resolve => setTimeout(resolve, 5000)); // 5 detik
 
   const withdrawResult = await withdrawLiquidity(wallet, address);
   if (!withdrawResult) {
