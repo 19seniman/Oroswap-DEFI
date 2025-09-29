@@ -63,8 +63,8 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-// PERUBAHAN KRUSIAL #2: Mengubah batas spread dari "0.9" menjadi "0.99"
-const SWAP_MAX_SPREAD = "0.99"; 
+// PERUBAHAN KRUSIAL: Tingkatkan toleransi spread dari "0.5" menjadi "0.9" (90%)
+const SWAP_MAX_SPREAD = "0.9"; 
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -176,8 +176,8 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
-        // PERUBAHAN KRUSIAL #1: Menurunkan SLIPPAGE_BUFFER dari 0.99 menjadi 0.98
-        const SLIPPAGE_BUFFER = 0.98; 
+        // Pertahankan buffer 1% untuk memastikan perhitungan harga se-akurat mungkin
+        const SLIPPAGE_BUFFER = 0.99; 
 
         if (fromDenom === DENOM_ZIG) {
             const rawPrice = oroAmount / zigAmount;
@@ -222,7 +222,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             let msg = {
                 swap: {
                     belief_price: beliefPrice,
-                    max_spread: SWAP_MAX_SPREAD, // Menggunakan spread yang lebih longgar (0.99)
+                    max_spread: SWAP_MAX_SPREAD, // Menggunakan spread yang lebih longgar
                     offer_asset: {
                         amount: microAmount.toString(),
                         info: { native_token: { denom: fromDenom } },
@@ -245,8 +245,8 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             if (error.message.includes('account sequence mismatch')) {
                 waitTime = 10000 + (retries * 5000); 
                 logger.warn(`${colors.yellow}Detected sequence mismatch. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
-            } else if (error.message.includes('max spread limit') || error.message.includes('insufficient fee') || error.message.includes('spread amount exceeds allowed limit')) {
-                 waitTime = 10000 + (retries * 5000); // Naikkan waktu tunggu untuk semua error spread/fee
+            } else if (error.message.includes('max spread limit') || error.message.includes('insufficient fee')) {
+                 waitTime = 8000 + (retries * 5000); // Naikkan waktu tunggu untuk error spread/fee
                 logger.warn(`${colors.yellow}Detected critical network error. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
             } else {
                  logger.warn(`Waiting ${waitTime / 1000} seconds before next retry...`);
@@ -477,6 +477,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
             logger.warn(`Swap ${i}/10 failed after all retries.`);
         }
         
+        // PERUBAHAN KRUSIAL: Tingkatkan waktu tunggu antar swap dari 8 detik menjadi 12 detik
         logger.info(`Waiting ${colors.magenta}12 seconds${colors.reset} before next swap...`);
         await new Promise(resolve => setTimeout(resolve, 12000)); 
     }
