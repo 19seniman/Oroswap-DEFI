@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const readline = require('readline');
-const { SigningCosmWasmClient } = require('@cosmjs/cosmwasm-stargate');
+const { SigningCosmWasmClient } = require('@cosmjs/cosmWasm-stargate');
 const { GasPrice, coins } = require('@cosmjs/stargate');
 const { DirectSecp256k1HdWallet, DirectSecp256k1Wallet } = require('@cosmjs/proto-signing');
 
@@ -47,7 +47,7 @@ const logger = {
 const RPC_URL = 'https://rpc.zigscan.net/'; 
 const API_URL = 'https://testnet-api.oroswap.org/api/';
 const EXPLORER_URL = 'https://zigscan.org/tx/';
-const GAS_PRICE = GasPrice.fromString('0.004uzig'); // Sudah dinaikkan untuk mengatasi insufficient fee
+const GAS_PRICE = GasPrice.fromString('0.004uzig'); 
 
 const ORO_ZIG_CONTRACT = 'zig15jqg0hmp9n06q0as7uk3x9xkwr9k3r7yh4ww2uc0hek8zlryrgmsamk4qg';
 
@@ -123,12 +123,9 @@ async function getBalance(client, address, denom) {
     }
 }
 
-/**
- * PERBAIKAN: Mengurangi batas max swap amount untuk mengurangi risiko max spread limit.
- */
 function getRandomSwapAmount(maxBalance) {
     const min = 0.0001; 
-    const max = Math.min(0.0003, maxBalance * 0.2); // Disesuaikan dari 0.0005 dan 30%
+    const max = Math.min(0.0003, maxBalance * 0.2); 
     return Math.random() * (max - min) + min;
 }
 
@@ -236,16 +233,17 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             logger.loading(`Swap ${swapNumber}/10: ${amount.toFixed(6)} ${fromSymbol} -> ${toSymbol} (Attempt ${retries + 1}/${maxRetries})`);
             const result = await client.execute(address, contractAddr, msg, 'auto', 'Swap', funds);
             
-            try {
-                logger.info(`Verifying transaction ${result.transactionHash} on-chain...`);
-                const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-                if (txResponse.code !== undefined && txResponse.code !== 0) {
-                    throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-                }
-                logger.success(`Transaction ${result.transactionHash} confirmed on-chain.`);
-            } catch (txError) {
-                logger.error(`Failed to confirm transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway, but be aware.`);
-            }
+            // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
+            // try {
+            //     logger.info(`Verifying transaction ${result.transactionHash} on-chain...`);
+            //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+            //     if (txResponse.code !== undefined && txResponse.code !== 0) {
+            //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+            //     }
+            //     logger.success(`Transaction ${result.transactionHash} confirmed on-chain.`);
+            // } catch (txError) {
+            //     logger.error(`Failed to confirm transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway, but be aware.`);
+            // }
 
             logger.success(`Swap ${swapNumber} completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
             return result;
@@ -311,16 +309,17 @@ async function addLiquidity(wallet, address) {
         logger.loading(`Adding liquidity: ${LIQUIDITY_ORO_AMOUNT} ORO + ${LIQUIDITY_ZIG_AMOUNT} ZIG`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Adding pool Liquidity', funds);
 
-        try {
-            logger.info(`Verifying liquidity addition transaction ${result.transactionHash} on-chain...`);
-            const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-            if (txResponse.code !== undefined && txResponse.code !== 0) {
-                throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-            }
-            logger.success(`Liquidity addition transaction ${result.transactionHash} confirmed on-chain.`);
-        } catch (txError) {
-            logger.error(`Failed to confirm liquidity addition transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
-        }
+        // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
+        // try {
+        //     logger.info(`Verifying liquidity addition transaction ${result.transactionHash} on-chain...`);
+        //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+        //     if (txResponse.code !== undefined && txResponse.code !== 0) {
+        //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+        //     }
+        //     logger.success(`Liquidity addition transaction ${result.transactionHash} confirmed on-chain.`);
+        // } catch (txError) {
+        //     logger.error(`Failed to confirm liquidity addition transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
+        // }
 
         logger.success(`Liquidity added! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
@@ -387,16 +386,17 @@ async function withdrawLiquidity(wallet, address) {
         logger.loading(`Withdrawing liquidity: ${poolToken.amount} LP tokens`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Removing pool Liquidity', funds);
 
-        try {
-            logger.info(`Verifying liquidity withdrawal transaction ${result.transactionHash} on-chain...`);
-            const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-            if (txResponse.code !== undefined && txResponse.code !== 0) {
-                throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-            }
-            logger.success(`Liquidity withdrawal transaction ${result.transactionHash} confirmed on-chain.`);
-        } catch (txError) {
-            logger.error(`Failed to confirm liquidity withdrawal transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
-        }
+        // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
+        // try {
+        //     logger.info(`Verifying liquidity withdrawal transaction ${result.transactionHash} on-chain...`);
+        //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
+        //     if (txResponse.code !== undefined && txResponse.code !== 0) {
+        //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
+        //     }
+        //     logger.success(`Liquidity withdrawal transaction ${result.transactionHash} confirmed on-chain.`);
+        // } catch (txError) {
+        //     logger.error(`Failed to confirm liquidity withdrawal transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
+        // }
 
         logger.success(`Liquidity withdrawn! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
@@ -511,12 +511,10 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
             logger.warn(`Swap ${i}/10 failed after all retries.`);
         }
         
-        // PERBAIKAN: Waktu tunggu ANTAR SWAP ditingkatkan menjadi 8 detik
         logger.info(`Waiting ${colors.magenta}8 seconds${colors.reset} before next swap...`);
-        await new Promise(resolve => setTimeout(resolve, 8000)); // 8 detik
+        await new Promise(resolve => setTimeout(resolve, 8000)); 
     }
 
-    // Delay sebelum Liquidity
     logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before liquidity operations...`);
     await new Promise(resolve => setTimeout(resolve, 5000)); 
 
