@@ -47,7 +47,7 @@ const logger = {
 const RPC_URL = 'https://rpc.zigscan.net/'; 
 const API_URL = 'https://testnet-api.oroswap.org/api/';
 const EXPLORER_URL = 'https://zigscan.org/tx/';
-// GAS_PRICE TINGGI
+// GAS_PRICE TINGGI (Prioritas)
 const GAS_PRICE = GasPrice.fromString('0.008uzig'); 
 
 const ORO_ZIG_CONTRACT = 'zig15jqg0hmp9n06q0as7uk3x9xkwr9k3r7yh4ww2uc0hek8zlryrgmsamk4qg';
@@ -64,8 +64,8 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-// PERUBAHAN KRUSIAL #1: Batas spread SANGAT KETAT (1%)
-const SWAP_MAX_SPREAD = "0.01"; 
+// PERUBAHAN KRUSIAL #1: Batas spread kembali ke 10%
+const SWAP_MAX_SPREAD = "0.1"; 
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -178,8 +178,8 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
-        // PERUBAHAN KRUSIAL #2: SLIPPAGE_BUFFER 98% untuk membuat harga target lebih konservatif
-        const SLIPPAGE_BUFFER = 0.98; 
+        // PERUBAHAN KRUSIAL #2: SLIPPAGE_BUFFER 95% (sangat konservatif)
+        const SLIPPAGE_BUFFER = 0.95; 
 
         if (fromDenom === DENOM_ZIG) {
             const rawPrice = oroAmount / zigAmount;
@@ -225,7 +225,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             let msg = {
                 swap: {
                     belief_price: beliefPrice,
-                    max_spread: SWAP_MAX_SPREAD, // 0.01 (1%)
+                    max_spread: SWAP_MAX_SPREAD, // 0.1 (10%)
                     offer_asset: {
                         amount: microAmount.toString(),
                         info: { native_token: { denom: fromDenom } },
