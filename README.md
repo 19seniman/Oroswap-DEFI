@@ -10,8 +10,9 @@ cd Oroswap-DEFI
 npm init -y
 ```
 ```
-nano .env ( format : PRIVATE_KEY_1= )
+nano .env 
 ```
+`format : PRIVATE_KEY_1=`
 ```
 npm install dotenv
 npm install axios
