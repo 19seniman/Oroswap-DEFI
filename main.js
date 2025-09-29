@@ -315,69 +315,7 @@ async function addLiquidity(wallet, address, txNumber) {
     }
 }
 
-async function getPoolTokenBalance(address) {
-    try {
-        const response = await axios.get(`${API_URL}portfolio/${address}`, {
-            headers: {
-                accept: 'application/json',
-                'accept-language': 'en-US,en;q=0.7',
-                'sec-fetch-dest': 'empty',
-                'sec-fetch-mode': 'cors',
-                'sec-fetch-site': 'same-site',
-                Referer: 'https://testnet.oroswap.org/',
-            },
-        });
-
-        const poolTokens = response.data.pool_tokens;
-        const oroZigPool = poolTokens.find(pool =>
-            pool.pair_contract_address === ORO_ZIG_CONTRACT ||
-            pool.name === 'ORO/ZIG'
-        );
-
-        if (oroZigPool) {
-            return {
-                amount: oroZigPool.amount,
-                denom: oroZigPool.denom
-            };
-        }
-
-        return null;
-    } catch (error) {
-        logger.error(`Failed to get pool token balance: ${error.message}`);
-        return null;
-    }
-}
-
-async function withdrawLiquidity(wallet, address, txNumber) {
-    let client;
-    try {
-        const poolToken = await getPoolTokenBalance(address);
-        if (!poolToken || parseFloat(poolToken.amount) <= 0) { 
-            logger.warn(`No pool tokens found or amount is zero to withdraw (${txNumber}/6)`);
-            return null;
-        }
-
-        client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
-        
-        const { sequence } = await client.getSequence(address);
-        logger.info(`[${address}] Current account sequence for withdraw liquidity (${txNumber}/6): ${sequence}`);
-
-        const msg = {
-            withdraw_liquidity: {}
-        };
-
-        const funds = coins(poolToken.amount, poolToken.denom);
-
-        logger.loading(`Withdrawing liquidity (${txNumber}/6): ${poolToken.amount} LP tokens`);
-        const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Removing pool Liquidity', funds);
-
-        logger.success(`Liquidity withdrawal (${txNumber}/6) completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
-        return result;
-    } catch (error) {
-        logger.error(`Withdraw liquidity (${txNumber}/6) failed: ${error.message}`);
-        return null;
-    }
-}
+// Fungsi getPoolTokenBalance dan withdrawLiquidity dihilangkan
 
 async function getPoints(address) {
     try {
@@ -489,28 +427,17 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
         await new Promise(resolve => setTimeout(resolve, 12000)); 
     }
 
-    logger.section('Liquidity Operations (6 Repeats)');
+    logger.section('Liquidity Addition Operations (6 Repeats)');
     let successfulLiquidityOps = 0;
     
-    // Perulangan 6 kali untuk Add Liquidity dan Withdraw Liquidity
+    // Perulangan 6 kali untuk Add Liquidity saja
     for (let i = 1; i <= 6; i++) {
         // 1. ADD LIQUIDITY
         const liquidityResult = await addLiquidity(wallet, address, i); 
-        if (!liquidityResult) {
-            logger.warn(`Liquidity addition ${i}/6 failed, proceeding to withdrawal attempt for existing LP tokens.`);
-        } else {
+        if (liquidityResult) {
             successfulLiquidityOps++;
-        }
-
-        logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before withdrawal...`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); 
-
-        // 2. WITHDRAW LIQUIDITY
-        const withdrawResult = await withdrawLiquidity(wallet, address, i);
-        if (!withdrawResult) {
-            logger.warn(`Liquidity withdrawal ${i}/6 failed.`);
         } else {
-            successfulLiquidityOps++;
+            logger.warn(`Liquidity addition ${i}/6 failed.`);
         }
 
         if (i < 6) {
@@ -528,7 +455,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
         logger.warn('Failed to retrieve points.');
     }
 
-    logger.summary(`Cycle ${cycleNumber} completed. Swaps: ${successfulSwaps}/5. Liquidity Operations: ${successfulLiquidityOps}/12 (6x Add, 6x Withdraw).`);
+    logger.summary(`Cycle ${cycleNumber} completed. Swaps: ${successfulSwaps}/5. Add Liquidity: ${successfulLiquidityOps}/6.`);
     console.log();
 }
 
