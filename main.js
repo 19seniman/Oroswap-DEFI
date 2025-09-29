@@ -1,7 +1,6 @@
 require('dotenv').config();
 const axios = require('axios');
 const readline = require('readline');
-// PERBAIKAN TYPO: Mengubah 'cosmWasm-stargate' menjadi 'cosmwasm-stargate'
 const { SigningCosmWasmClient } = require('@cosmjs/cosmwasm-stargate');
 const { GasPrice, coins } = require('@cosmjs/stargate');
 const { DirectSecp256k1HdWallet, DirectSecp256k1Wallet } = require('@cosmjs/proto-signing');
@@ -64,7 +63,8 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-const SWAP_MAX_SPREAD = "0.5"; 
+// PERUBAHAN KRUSIAL: Tingkatkan toleransi spread dari "0.5" menjadi "0.9" (90%)
+const SWAP_MAX_SPREAD = "0.9"; 
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -176,6 +176,7 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
+        // Pertahankan buffer 1% untuk memastikan perhitungan harga se-akurat mungkin
         const SLIPPAGE_BUFFER = 0.99; 
 
         if (fromDenom === DENOM_ZIG) {
@@ -221,7 +222,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             let msg = {
                 swap: {
                     belief_price: beliefPrice,
-                    max_spread: SWAP_MAX_SPREAD,
+                    max_spread: SWAP_MAX_SPREAD, // Menggunakan spread yang lebih longgar
                     offer_asset: {
                         amount: microAmount.toString(),
                         info: { native_token: { denom: fromDenom } },
@@ -245,7 +246,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
                 waitTime = 10000 + (retries * 5000); 
                 logger.warn(`${colors.yellow}Detected sequence mismatch. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
             } else if (error.message.includes('max spread limit') || error.message.includes('insufficient fee')) {
-                 waitTime = 5000 + (retries * 5000); 
+                 waitTime = 8000 + (retries * 5000); // Naikkan waktu tunggu untuk error spread/fee
                 logger.warn(`${colors.yellow}Detected critical network error. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
             } else {
                  logger.warn(`Waiting ${waitTime / 1000} seconds before next retry...`);
@@ -476,8 +477,9 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
             logger.warn(`Swap ${i}/10 failed after all retries.`);
         }
         
-        logger.info(`Waiting ${colors.magenta}8 seconds${colors.reset} before next swap...`);
-        await new Promise(resolve => setTimeout(resolve, 8000)); 
+        // PERUBAHAN KRUSIAL: Tingkatkan waktu tunggu antar swap dari 8 detik menjadi 12 detik
+        logger.info(`Waiting ${colors.magenta}12 seconds${colors.reset} before next swap...`);
+        await new Promise(resolve => setTimeout(resolve, 12000)); 
     }
 
     logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before liquidity operations...`);
