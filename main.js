@@ -64,7 +64,7 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-// PERUBAHAN KRUSIAL #1: Batas spread kembali ke 10%
+// Batas spread 10%
 const SWAP_MAX_SPREAD = "0.1"; 
 
 const rl = readline.createInterface({
@@ -126,9 +126,9 @@ async function getBalance(client, address, denom) {
 }
 
 function getRandomSwapAmount(maxBalance) {
-    // Jumlah swap sekitar 0.001 ZIG/ORO
+    // Jumlah swap sekitar 0.001 ORO
     const min = 0.0009; 
-    const max = Math.min(0.0015, maxBalance * 0.2); // Maksimal 0.0015 atau 20% dari saldo
+    const max = Math.min(0.0015, maxBalance * 0.2); 
     return Math.random() * (max - min) + min;
 }
 
@@ -178,13 +178,14 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
-        // PERUBAHAN KRUSIAL #2: SLIPPAGE_BUFFER 95% (sangat konservatif)
+        // SLIPPAGE_BUFFER 95% (sangat konservatif)
         const SLIPPAGE_BUFFER = 0.95; 
 
         if (fromDenom === DENOM_ZIG) {
             const rawPrice = oroAmount / zigAmount;
             beliefPrice = (rawPrice * SLIPPAGE_BUFFER).toFixed(18); 
         } else {
+            // ORO -> ZIG
             const rawPrice = zigAmount / oroAmount;
             beliefPrice = (rawPrice * SLIPPAGE_BUFFER).toFixed(18); 
         }
@@ -202,7 +203,6 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
     while (retries < maxRetries) {
         let client; 
         try {
-            // Client menggunakan GAS_PRICE yang lebih tinggi (0.008uzig)
             client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
             
             const { sequence } = await client.getSequence(address);
@@ -461,14 +461,21 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     logger.info(`Initial balances: ${zigBalance.toFixed(6)} ZIG, ${oroBalance.toFixed(6)} ORO`);
 
     let successfulSwaps = 0;
+    // Kita akan menjalankan 10 kali SWAP, tapi HANYA ORO -> ZIG
     for (let i = 1; i <= 10; i++) {
-        const fromDenom = i % 2 === 1 ? DENOM_ORO : DENOM_ZIG;
+        const fromDenom = DENOM_ORO; // HANYA ORO -> ZIG
+
+        // Hanya proses swap jika i ganjil (Swap ORO->ZIG diatur sebagai i ganjil di versi sebelumnya)
+        if (i % 2 !== 1) {
+            logger.info(`Skipping Swap ${i}/10 (ZIG -> ORO) as requested.`);
+            continue; 
+        }
         
         const currentBalance = await getBalance(client, address, fromDenom);
         
         const minSwapAmount = 0.0005; 
         if (currentBalance < minSwapAmount) {  
-            logger.warn(`Skipping swap ${i}/10: Insufficient ${fromDenom === DENOM_ZIG ? 'ZIG' : 'ORO'} balance (${currentBalance.toFixed(6)} < ${minSwapAmount.toFixed(6)})`);
+            logger.warn(`Skipping swap ${i}/10: Insufficient ORO balance (${currentBalance.toFixed(6)} < ${minSwapAmount.toFixed(6)})`);
             continue; 
         }
         
@@ -481,7 +488,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
             logger.warn(`Swap ${i}/10 failed after all retries.`);
         }
         
-        logger.info(`Waiting ${colors.magenta}12 seconds${colors.reset} before next swap...`);
+        logger.info(`Waiting ${colors.magenta}12 seconds${colors.reset} before next transaction...`);
         await new Promise(resolve => setTimeout(resolve, 12000)); 
     }
 
@@ -510,7 +517,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
         logger.warn('Failed to retrieve points.');
     }
 
-    logger.summary(`Cycle ${cycleNumber} completed with ${successfulSwaps}/10 successful swaps.`);
+    logger.summary(`Cycle ${cycleNumber} completed with ${successfulSwaps}/5 successful ORO->ZIG swaps.`);
     console.log();
 }
 
@@ -529,7 +536,7 @@ async function main() {
 
     let numTransactions;
     while (true) {
-        const input = await prompt('Enter number of transactions to execute per wallet: ');
+        const input = await prompt('Enter number of transaction cycles to execute per wallet: ');
         if (isValidNumber(input)) {
             numTransactions = parseInt(input);
             break;
