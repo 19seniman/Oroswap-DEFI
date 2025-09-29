@@ -1,7 +1,8 @@
 require('dotenv').config();
 const axios = require('axios');
 const readline = require('readline');
-const { SigningCosmWasmClient } = require('@cosmjs/cosmWasm-stargate');
+// PERBAIKAN TYPO: Mengubah 'cosmWasm-stargate' menjadi 'cosmwasm-stargate'
+const { SigningCosmWasmClient } = require('@cosmjs/cosmwasm-stargate');
 const { GasPrice, coins } = require('@cosmjs/stargate');
 const { DirectSecp256k1HdWallet, DirectSecp256k1Wallet } = require('@cosmjs/proto-signing');
 
@@ -233,18 +234,6 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             logger.loading(`Swap ${swapNumber}/10: ${amount.toFixed(6)} ${fromSymbol} -> ${toSymbol} (Attempt ${retries + 1}/${maxRetries})`);
             const result = await client.execute(address, contractAddr, msg, 'auto', 'Swap', funds);
             
-            // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
-            // try {
-            //     logger.info(`Verifying transaction ${result.transactionHash} on-chain...`);
-            //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-            //     if (txResponse.code !== undefined && txResponse.code !== 0) {
-            //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-            //     }
-            //     logger.success(`Transaction ${result.transactionHash} confirmed on-chain.`);
-            // } catch (txError) {
-            //     logger.error(`Failed to confirm transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway, but be aware.`);
-            // }
-
             logger.success(`Swap ${swapNumber} completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
             return result;
         } catch (error) {
@@ -308,18 +297,6 @@ async function addLiquidity(wallet, address) {
 
         logger.loading(`Adding liquidity: ${LIQUIDITY_ORO_AMOUNT} ORO + ${LIQUIDITY_ZIG_AMOUNT} ZIG`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Adding pool Liquidity', funds);
-
-        // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
-        // try {
-        //     logger.info(`Verifying liquidity addition transaction ${result.transactionHash} on-chain...`);
-        //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-        //     if (txResponse.code !== undefined && txResponse.code !== 0) {
-        //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-        //     }
-        //     logger.success(`Liquidity addition transaction ${result.transactionHash} confirmed on-chain.`);
-        // } catch (txError) {
-        //     logger.error(`Failed to confirm liquidity addition transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
-        // }
 
         logger.success(`Liquidity added! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
@@ -385,18 +362,6 @@ async function withdrawLiquidity(wallet, address) {
 
         logger.loading(`Withdrawing liquidity: ${poolToken.amount} LP tokens`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Removing pool Liquidity', funds);
-
-        // Perbaikan: Hapus blok verifikasi on-chain yang menyebabkan error pollForTx
-        // try {
-        //     logger.info(`Verifying liquidity withdrawal transaction ${result.transactionHash} on-chain...`);
-        //     const txResponse = await client.pollForTx(result.transactionHash, 10000, 2000); 
-        //     if (txResponse.code !== undefined && txResponse.code !== 0) {
-        //         throw new Error(`Transaction ${result.transactionHash} failed on-chain with code ${txResponse.code}: ${txResponse.rawLog}`);
-        //     }
-        //     logger.success(`Liquidity withdrawal transaction ${result.transactionHash} confirmed on-chain.`);
-        // } catch (txError) {
-        //     logger.error(`Failed to confirm liquidity withdrawal transaction ${result.transactionHash} on-chain: ${txError.message}. Proceeding anyway.`);
-        // }
 
         logger.success(`Liquidity withdrawn! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
