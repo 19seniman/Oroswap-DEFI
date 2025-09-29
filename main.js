@@ -62,7 +62,7 @@ const DENOM_ZIG = 'uzig';
 
 const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
-// PERUBAHAN: Jumlah likuiditas disesuaikan dengan rasio yang diminta
+// Jumlah likuiditas disesuaikan dengan rasio harga pasar yang diberikan
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.366686; 
 // Batas spread 10% untuk Swap
@@ -268,19 +268,19 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
     return null;
 }
 
-async function addLiquidity(wallet, address) {
+async function addLiquidity(wallet, address, txNumber) {
     let client;
     try {
         client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
         
         const { sequence } = await client.getSequence(address);
-        logger.info(`[${address}] Current account sequence for add liquidity: ${sequence}`);
+        logger.info(`[${address}] Current account sequence for add liquidity (${txNumber}/6): ${sequence}`);
 
         const oroBalance = await getBalance(client, address, DENOM_ORO);
         const zigBalance = await getBalance(client, address, DENOM_ZIG);
         // Memeriksa saldo berdasarkan jumlah yang diminta
         if (oroBalance < LIQUIDITY_ORO_AMOUNT || zigBalance < LIQUIDITY_ZIG_AMOUNT) {
-            logger.error(`Insufficient funds for liquidity: ${oroBalance.toFixed(6)} ORO, ${zigBalance.toFixed(6)} ZIG available. Required: ${LIQUIDITY_ORO_AMOUNT} ORO, ${LIQUIDITY_ZIG_AMOUNT} ZIG.`);
+            logger.error(`Insufficient funds for add liquidity (${txNumber}/6): ${oroBalance.toFixed(6)} ORO, ${zigBalance.toFixed(6)} ZIG available. Required: ${LIQUIDITY_ORO_AMOUNT} ORO, ${LIQUIDITY_ZIG_AMOUNT} ZIG.`);
             return null;
         }
 
@@ -304,14 +304,13 @@ async function addLiquidity(wallet, address) {
             { denom: DENOM_ZIG, amount: microAmountZIG.toString() }
         ];
 
-        logger.loading(`Adding liquidity: ${LIQUIDITY_ORO_AMOUNT} ORO + ${LIQUIDITY_ZIG_AMOUNT} ZIG`);
+        logger.loading(`Adding liquidity (${txNumber}/6): ${LIQUIDITY_ORO_AMOUNT} ORO + ${LIQUIDITY_ZIG_AMOUNT} ZIG`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Adding pool Liquidity', funds);
 
-        logger.success(`Liquidity added! Tx: ${EXPLORER_URL}${result.transactionHash}`);
+        logger.success(`Liquidity addition (${txNumber}/6) completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
     } catch (error) {
-        logger.error(`Add liquidity failed: ${error.message}`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); 
+        logger.error(`Add liquidity (${txNumber}/6) failed: ${error.message}`);
         return null;
     }
 }
@@ -349,19 +348,19 @@ async function getPoolTokenBalance(address) {
     }
 }
 
-async function withdrawLiquidity(wallet, address) {
+async function withdrawLiquidity(wallet, address, txNumber) {
     let client;
     try {
         const poolToken = await getPoolTokenBalance(address);
         if (!poolToken || parseFloat(poolToken.amount) <= 0) { 
-            logger.warn('No pool tokens found or amount is zero to withdraw');
+            logger.warn(`No pool tokens found or amount is zero to withdraw (${txNumber}/6)`);
             return null;
         }
 
         client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
         
         const { sequence } = await client.getSequence(address);
-        logger.info(`[${address}] Current account sequence for withdraw liquidity: ${sequence}`);
+        logger.info(`[${address}] Current account sequence for withdraw liquidity (${txNumber}/6): ${sequence}`);
 
         const msg = {
             withdraw_liquidity: {}
@@ -369,14 +368,13 @@ async function withdrawLiquidity(wallet, address) {
 
         const funds = coins(poolToken.amount, poolToken.denom);
 
-        logger.loading(`Withdrawing liquidity: ${poolToken.amount} LP tokens`);
+        logger.loading(`Withdrawing liquidity (${txNumber}/6): ${poolToken.amount} LP tokens`);
         const result = await client.execute(address, ORO_ZIG_CONTRACT, msg, 'auto', 'Removing pool Liquidity', funds);
 
-        logger.success(`Liquidity withdrawn! Tx: ${EXPLORER_URL}${result.transactionHash}`);
+        logger.success(`Liquidity withdrawal (${txNumber}/6) completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
         return result;
     } catch (error) {
-        logger.error(`Withdraw liquidity failed: ${error.message}`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        logger.error(`Withdraw liquidity (${txNumber}/6) failed: ${error.message}`);
         return null;
     }
 }
@@ -460,8 +458,8 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     
     const client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
 
-    const zigBalance = await getBalance(client, address, DENOM_ZIG);
-    const oroBalance = await getBalance(client, address, DENOM_ORO);
+    let zigBalance = await getBalance(client, address, DENOM_ZIG);
+    let oroBalance = await getBalance(client, address, DENOM_ORO);
     logger.info(`Initial balances: ${zigBalance.toFixed(6)} ZIG, ${oroBalance.toFixed(6)} ORO`);
 
     let successfulSwaps = 0;
@@ -491,21 +489,34 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
         await new Promise(resolve => setTimeout(resolve, 12000)); 
     }
 
-    logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before liquidity operations...`);
-    await new Promise(resolve => setTimeout(resolve, 5000)); 
+    logger.section('Liquidity Operations (6 Repeats)');
+    let successfulLiquidityOps = 0;
+    
+    // Perulangan 6 kali untuk Add Liquidity dan Withdraw Liquidity
+    for (let i = 1; i <= 6; i++) {
+        // 1. ADD LIQUIDITY
+        const liquidityResult = await addLiquidity(wallet, address, i); 
+        if (!liquidityResult) {
+            logger.warn(`Liquidity addition ${i}/6 failed, proceeding to withdrawal attempt for existing LP tokens.`);
+        } else {
+            successfulLiquidityOps++;
+        }
 
-    logger.section('Liquidity Operations');
-    // Menjalankan Add Liquidity dengan rasio baru (0.1 ORO : 0.366686 ZIG)
-    const liquidityResult = await addLiquidity(wallet, address); 
-    if (!liquidityResult) {
-        logger.warn('Liquidity addition failed, proceeding to withdrawal attempt.');
-    }
+        logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before withdrawal...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); 
 
-    await new Promise(resolve => setTimeout(resolve, 5000)); 
+        // 2. WITHDRAW LIQUIDITY
+        const withdrawResult = await withdrawLiquidity(wallet, address, i);
+        if (!withdrawResult) {
+            logger.warn(`Liquidity withdrawal ${i}/6 failed.`);
+        } else {
+            successfulLiquidityOps++;
+        }
 
-    const withdrawResult = await withdrawLiquidity(wallet, address);
-    if (!withdrawResult) {
-        logger.warn('Liquidity withdrawal failed, proceeding to points check.');
+        if (i < 6) {
+            logger.info(`Waiting ${colors.magenta}10 seconds${colors.reset} before next liquidity cycle...`);
+            await new Promise(resolve => setTimeout(resolve, 10000));
+        }
     }
 
     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -517,7 +528,7 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
         logger.warn('Failed to retrieve points.');
     }
 
-    logger.summary(`Cycle ${cycleNumber} completed with ${successfulSwaps}/5 successful ORO->ZIG swaps.`);
+    logger.summary(`Cycle ${cycleNumber} completed. Swaps: ${successfulSwaps}/5. Liquidity Operations: ${successfulLiquidityOps}/12 (6x Add, 6x Withdraw).`);
     console.log();
 }
 
