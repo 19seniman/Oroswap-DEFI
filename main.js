@@ -47,8 +47,7 @@ const logger = {
 const RPC_URL = 'https://rpc.zigscan.net/'; 
 const API_URL = 'https://testnet-api.oroswap.org/api/';
 const EXPLORER_URL = 'https://zigscan.org/tx/';
-// PERBAIKAN: Meningkatkan GAS_PRICE untuk mengatasi 'insufficient fee'
-const GAS_PRICE = GasPrice.fromString('0.004uzig'); 
+const GAS_PRICE = GasPrice.fromString('0.004uzig'); // Sudah dinaikkan untuk mengatasi insufficient fee
 
 const ORO_ZIG_CONTRACT = 'zig15jqg0hmp9n06q0as7uk3x9xkwr9k3r7yh4ww2uc0hek8zlryrgmsamk4qg';
 
@@ -124,9 +123,12 @@ async function getBalance(client, address, denom) {
     }
 }
 
+/**
+ * PERBAIKAN: Mengurangi batas max swap amount untuk mengurangi risiko max spread limit.
+ */
 function getRandomSwapAmount(maxBalance) {
     const min = 0.0001; 
-    const max = Math.min(0.0005, maxBalance * 0.3); 
+    const max = Math.min(0.0003, maxBalance * 0.2); // Disesuaikan dari 0.0005 dan 30%
     return Math.random() * (max - min) + min;
 }
 
@@ -141,10 +143,6 @@ async function getPoolInfo(contractAddress) {
     }
 }
 
-/**
- * Diperbarui untuk menghitung belief price secara dinamis dan aman (margin 1%)
- * untuk mengatasi error 'max spread limit'.
- */
 function calculateBeliefPrice(poolInfo, fromDenom) {
     try {
         if (!poolInfo || !poolInfo.assets || poolInfo.assets.length !== 2) {
@@ -180,14 +178,12 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
-        const SLIPPAGE_BUFFER = 0.99; // Margin aman 1%
+        const SLIPPAGE_BUFFER = 0.99; 
 
         if (fromDenom === DENOM_ZIG) {
-            // ZIG -> ORO swap: Harga ORO per ZIG
             const rawPrice = oroAmount / zigAmount;
             beliefPrice = (rawPrice * SLIPPAGE_BUFFER).toFixed(18); 
         } else {
-            // ORO -> ZIG swap: Harga ZIG per ORO
             const rawPrice = zigAmount / oroAmount;
             beliefPrice = (rawPrice * SLIPPAGE_BUFFER).toFixed(18); 
         }
@@ -262,7 +258,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
                 waitTime = 10000 + (retries * 5000); 
                 logger.warn(`${colors.yellow}Detected sequence mismatch. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
             } else if (error.message.includes('max spread limit') || error.message.includes('insufficient fee')) {
-                 waitTime = 5000 + (retries * 5000); // Tunggu lebih lama jika gagal karena spread/fee
+                 waitTime = 5000 + (retries * 5000); 
                 logger.warn(`${colors.yellow}Detected critical network error. Waiting longer: ${waitTime / 1000} seconds before next retry...${colors.reset}`);
             } else {
                  logger.warn(`Waiting ${waitTime / 1000} seconds before next retry...`);
@@ -470,7 +466,6 @@ async function executeAllWallets(keys, numTransactions) {
                 await executeTransactionCycle(wallet, address, cycle, walletIndex + 1);
 
                 if (cycle < numTransactions) {
-                    // Waktu tunggu antar siklus transaksi
                     logger.info(`Waiting ${colors.magenta}20 seconds${colors.reset} before next cycle for wallet ${walletIndex + 1}...`);
                     await new Promise(resolve => setTimeout(resolve, 20000)); 
                 }
@@ -516,9 +511,9 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
             logger.warn(`Swap ${i}/10 failed after all retries.`);
         }
         
-        // Waktu tunggu ANTAR SWAP
-        logger.info(`Waiting ${colors.magenta}5 seconds${colors.reset} before next swap...`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 detik
+        // PERBAIKAN: Waktu tunggu ANTAR SWAP ditingkatkan menjadi 8 detik
+        logger.info(`Waiting ${colors.magenta}8 seconds${colors.reset} before next swap...`);
+        await new Promise(resolve => setTimeout(resolve, 8000)); // 8 detik
     }
 
     // Delay sebelum Liquidity
