@@ -47,7 +47,8 @@ const logger = {
 const RPC_URL = 'https://rpc.zigscan.net/'; 
 const API_URL = 'https://testnet-api.oroswap.org/api/';
 const EXPLORER_URL = 'https://zigscan.org/tx/';
-const GAS_PRICE = GasPrice.fromString('0.004uzig'); 
+// Peningkatan GAS_PRICE untuk prioritas transaksi
+const GAS_PRICE = GasPrice.fromString('0.008uzig'); 
 
 const ORO_ZIG_CONTRACT = 'zig15jqg0hmp9n06q0as7uk3x9xkwr9k3r7yh4ww2uc0hek8zlryrgmsamk4qg';
 
@@ -63,8 +64,8 @@ const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
 const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-// PERUBAHAN KRUSIAL #1: Mengurangi batas spread ke nilai yang SANGAT KETAT (5%)
-const SWAP_MAX_SPREAD = "0.05"; 
+// Batas spread yang realistis (20%)
+const SWAP_MAX_SPREAD = "0.2"; 
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -125,9 +126,9 @@ async function getBalance(client, address, denom) {
 }
 
 function getRandomSwapAmount(maxBalance) {
-    // PERUBAHAN KRUSIAL #3: Mengembalikan rentang swap ke ukuran kecil
-    const min = 0.0001; 
-    const max = Math.min(0.0003, maxBalance * 0.2); 
+    // PERUBAHAN KRUSIAL: Menaikkan jumlah swap ke sekitar 0.001 ZIG/ORO
+    const min = 0.0009; 
+    const max = Math.min(0.0015, maxBalance * 0.2); // Maksimal 0.0015 atau 20% dari saldo
     return Math.random() * (max - min) + min;
 }
 
@@ -177,7 +178,7 @@ function calculateBeliefPrice(poolInfo, fromDenom) {
         }
 
         let beliefPrice;
-        // PERUBAHAN KRUSIAL #2: Menaikkan SLIPPAGE_BUFFER kembali ke 0.99 untuk akurasi harga
+        // SLIPPAGE_BUFFER 99% untuk akurasi harga
         const SLIPPAGE_BUFFER = 0.99; 
 
         if (fromDenom === DENOM_ZIG) {
@@ -201,6 +202,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
     while (retries < maxRetries) {
         let client; 
         try {
+            // Client menggunakan GAS_PRICE yang lebih tinggi (0.008uzig)
             client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, wallet, { gasPrice: GAS_PRICE });
             
             const { sequence } = await client.getSequence(address);
@@ -223,7 +225,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             let msg = {
                 swap: {
                     belief_price: beliefPrice,
-                    max_spread: SWAP_MAX_SPREAD, // Kini 0.05 (5%)
+                    max_spread: SWAP_MAX_SPREAD, // 0.2 (20%)
                     offer_asset: {
                         amount: microAmount.toString(),
                         info: { native_token: { denom: fromDenom } },
