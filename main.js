@@ -62,9 +62,10 @@ const DENOM_ZIG = 'uzig';
 
 const ORO_CONTRACT = 'zig10rfjm85jmzfhravjwpq3hcdz8ngxg7lxd0drkr';
 
+// PERUBAHAN: Menyamakan jumlah likuiditas untuk rasio 1:1
 const LIQUIDITY_ORO_AMOUNT = 0.1; 
-const LIQUIDITY_ZIG_AMOUNT = 0.05; 
-// Batas spread 10%
+const LIQUIDITY_ZIG_AMOUNT = 0.1; 
+// Batas spread 10% untuk Swap
 const SWAP_MAX_SPREAD = "0.1"; 
 
 const rl = readline.createInterface({
@@ -235,7 +236,7 @@ async function performSwap(wallet, address, amount, fromDenom, swapNumber, maxRe
             let funds = coins(microAmount, fromDenom);
             let contractAddr = ORO_ZIG_CONTRACT;
 
-            logger.loading(`Swap ${swapNumber}/10: ${amount.toFixed(6)} ${fromSymbol} -> ${toSymbol} (Attempt ${retries + 1}/${maxRetries})`);
+            logger.loading(`Swap ${swapNumber}/5: ${amount.toFixed(6)} ${fromSymbol} -> ${toSymbol} (Attempt ${retries + 1}/${maxRetries})`);
             const result = await client.execute(address, contractAddr, msg, 'auto', 'Swap', funds);
             
             logger.success(`Swap ${swapNumber} completed! Tx: ${EXPLORER_URL}${result.transactionHash}`);
@@ -278,7 +279,7 @@ async function addLiquidity(wallet, address) {
         const oroBalance = await getBalance(client, address, DENOM_ORO);
         const zigBalance = await getBalance(client, address, DENOM_ZIG);
         if (oroBalance < LIQUIDITY_ORO_AMOUNT || zigBalance < LIQUIDITY_ZIG_AMOUNT) {
-            logger.error(`Insufficient funds for liquidity: ${oroBalance.toFixed(6)} ORO, ${zigBalance.toFixed(6)} ZIG available`);
+            logger.error(`Insufficient funds for liquidity: ${oroBalance.toFixed(6)} ORO, ${zigBalance.toFixed(6)} ZIG required`);
             return null;
         }
 
@@ -291,7 +292,8 @@ async function addLiquidity(wallet, address) {
                     { amount: microAmountORO.toString(), info: { native_token: { denom: DENOM_ORO } } },
                     { amount: microAmountZIG.toString(), info: { native_token: { denom: DENOM_ZIG } } },
                 ],
-                slippage_tolerance: "0.1",
+                // PERBAIKAN: Meningkatkan slippage tolerance menjadi 50%
+                slippage_tolerance: "0.5", 
             },
         };
 
@@ -461,31 +463,26 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     logger.info(`Initial balances: ${zigBalance.toFixed(6)} ZIG, ${oroBalance.toFixed(6)} ORO`);
 
     let successfulSwaps = 0;
-    // Kita akan menjalankan 10 kali SWAP, tapi HANYA ORO -> ZIG
-    for (let i = 1; i <= 10; i++) {
+    // Kita akan menjalankan 5 kali SWAP ORO -> ZIG
+    for (let i = 1; i <= 5; i++) { // Mengurangi perulangan menjadi 5 swap ORO->ZIG
         const fromDenom = DENOM_ORO; // HANYA ORO -> ZIG
 
-        // Hanya proses swap jika i ganjil (Swap ORO->ZIG diatur sebagai i ganjil di versi sebelumnya)
-        if (i % 2 !== 1) {
-            logger.info(`Skipping Swap ${i}/10 (ZIG -> ORO) as requested.`);
-            continue; 
-        }
-        
         const currentBalance = await getBalance(client, address, fromDenom);
         
         const minSwapAmount = 0.0005; 
         if (currentBalance < minSwapAmount) {  
-            logger.warn(`Skipping swap ${i}/10: Insufficient ORO balance (${currentBalance.toFixed(6)} < ${minSwapAmount.toFixed(6)})`);
+            logger.warn(`Skipping swap ${i}/5: Insufficient ORO balance (${currentBalance.toFixed(6)} < ${minSwapAmount.toFixed(6)})`);
             continue; 
         }
         
         const swapAmount = getRandomSwapAmount(currentBalance);
 
-        const result = await performSwap(wallet, address, swapAmount, fromDenom, i);
+        // Nomor swap di log sekarang adalah 1/5, 2/5, dst.
+        const result = await performSwap(wallet, address, swapAmount, fromDenom, i); 
         if (result) {
             successfulSwaps++;
         } else {
-            logger.warn(`Swap ${i}/10 failed after all retries.`);
+            logger.warn(`Swap ${i}/5 failed after all retries.`);
         }
         
         logger.info(`Waiting ${colors.magenta}12 seconds${colors.reset} before next transaction...`);
@@ -496,7 +493,8 @@ async function executeTransactionCycle(wallet, address, cycleNumber, walletNumbe
     await new Promise(resolve => setTimeout(resolve, 5000)); 
 
     logger.section('Liquidity Operations');
-    const liquidityResult = await addLiquidity(wallet, address);
+    // Sekarang akan menggunakan 0.1 ORO dan 0.1 ZIG dengan slippage 50%
+    const liquidityResult = await addLiquidity(wallet, address); 
     if (!liquidityResult) {
         logger.warn('Liquidity addition failed, proceeding to withdrawal attempt.');
     }
